@@ -56,7 +56,7 @@ settings = make_settings( Version = "VAST_v9_2_0",
                           max_cells = 5000, 
                           knot_method = "grid")
 
-source('C:/Users/cecilia.oleary/Desktop/Rprojects/VAST_Bering_Sea_Indices/fit_model.R')
+source(paste0(getwd(),'/fit_model.R'))
 fit = fit_model( "settings" = settings, 
                  "Lat_i" = Data_Geostat[,'Lat'], 
                  "Lon_i" = Data_Geostat[,'Lon'], 
