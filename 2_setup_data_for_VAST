@@ -1,0 +1,209 @@
+library('TMB')
+library("devtools")
+library('VAST')
+library('FishData')
+library(dplyr)
+library(ggplot2)
+
+## set up RACE data for VAST
+working_directory <- getwd()
+
+####species
+species_code <- c(21740,21720,10285)[3] #pollock,cod,plaice
+
+if(species_code == 21740){
+  species_name <- "Gadus chalcogrammus"
+}
+if(species_code == 21720){
+  species_name <- "Gadus macrocephalus"
+}
+if(species_code == 10285){
+  species_name <- "Pleuronectes quadrituberculatus"
+}
+
+##fill in zeroes
+zero_fill <- function(missing_hauljoins, catch, species_code = species_code){
+  if(length(missing_hauljoins) >= 1){
+  RBcatch <- catch %>%
+    dplyr::select(HAULJOIN,SPECIES_CODE,WEIGHT) %>%
+    dplyr::add_row("HAULJOIN" = missing_hauljoins, SPECIES_CODE = species_code, WEIGHT = 0) %>%
+    #turns implicit missing values into explicit missing values (adding in zeros)
+    tidyr::complete(HAULJOIN,SPECIES_CODE,fill=list(WEIGHT=0))
+  }else{
+  RBcatch <- catch %>%
+    dplyr::select(HAULJOIN,SPECIES_CODE,WEIGHT) %>%
+    #turns implicit missing values into explicit missing values (adding in zeros)
+    tidyr::complete(HAULJOIN,SPECIES_CODE,fill=list(WEIGHT=0))
+  }
+  return(RBcatch)
+
+}
+
+##load catch data data
+catch <- read.csv(paste0(getwd(),"/data/BS/racebase_catch.csv"))
+#subset the catch records for the weight (kg) catch of the species of interest.
+catch_by_species <- subset(catch, catch$SPECIES_CODE==species_code)
+catch_by_species <- data.frame(HAULJOIN = catch_by_species$HAULJOIN, 
+                               WEIGHT = catch_by_species$WEIGHT, 
+                               NUMBERS = catch_by_species$NUMBER_FISH,
+                               SPECIES_CODE = catch_by_species$SPECIES_CODE)
+catch_by_species <- as.data.frame(catch_by_species)
+head(catch_by_species)
+
+##load & format EBS haul info
+load(paste0(getwd(),"/data/BS/hauls_edited.Rdata"))
+shelf <- shelf_hauls
+shelf = shelf[which(shelf$REGION == "BS"),]
+shelf = shelf[which(shelf$YEAR >= 1982),]
+shelf <- subset(shelf, (shelf$STRATUM %in% c(10,20,31,32,41,42,43,50,61,62,82,90)))
+#subset so only hauls that are abundance hauls are used
+shelf = shelf[which(shelf$ABUNDANCE_HAUL=='Y'),]
+#join haul & catch data creating list  
+shelf_data_sub <- merge(shelf, catch_by_species, by="HAULJOIN", all.x=TRUE)
+shelf_data_sub$WEIGHT[which(is.na(shelf_data_sub$WEIGHT))] <- 0
+nrow(shelf_data_sub[which(shelf_data_sub$WEIGHT == 0),])
+nrow(shelf_data_sub[which(shelf_data_sub$NUMBER_FISH == 0),])
+shelf_data <- shelf_data_sub 
+
+##load & format NBS haul info
+load(paste0(getwd(),"/data/BS/hauls_edited.Rdata"))
+nbs <- shelf_hauls
+nbs = nbs[which(nbs$REGION == "BS"),]
+nbs <- subset(nbs, (nbs$STRATUM %in% c(70,71,81,NA,0)))
+nbs = nbs[which(nbs$YEAR >= 1982),]
+nbs1 = nbs[which(nbs$ABUNDANCE_HAUL == "Y" & nbs$YEAR < 2000),]
+nbs2 = nbs[which(nbs$YEAR > 2000),]
+nbs2 = nbs2[which(nbs2$START_LATITUDE > 60.49 &  nbs2$START_LATITUDE < 65.4 & nbs2$START_LONGITUDE > -176),]
+nbs2 <- subset(nbs2, !(nbs2$YEAR == 2004))
+nbs <- rbind(nbs1,nbs2)
+
+#join haul & catch data together creating list  
+nbs_data_sub <- merge(nbs, catch_by_species, by="HAULJOIN", all.x=TRUE)
+nbs_data_sub$WEIGHT[which(is.na(nbs_data_sub$WEIGHT))] <- 0
+nrow(nbs_data_sub[which(nbs_data_sub$WEIGHT == 0),])
+nrow(nbs_data_sub[which(nbs_data_sub$NUMBER_FISH == 0),])
+nbs_data <- nbs_data_sub 
+
+#load predicted NBS net width 1982 data with rest of NBS data
+load(file = paste0(getwd(),"/predicting_net_width_for_NBS/nbs_data_1982_with_predicted_net_width_.Rdat"))
+##merge these net width values into the NBS data frame via hauljoin
+nbs_data_net_width <- nbs_data_net_width %>%
+  select(YEAR, HAULJOIN, NET_WIDTH)
+
+joined_data <- left_join(nbs_data, nbs_data_net_width, by = c("YEAR","HAULJOIN"), all.y=FALSE, all.x = FALSE)
+joined_data$NET_WIDTH.x[which(is.na(joined_data$NET_WIDTH.x))] <- joined_data$NET_WIDTH.y[which(is.na(joined_data$NET_WIDTH.x))] 
+nbs_data <- joined_data
+nbs_data <- nbs_data[,!names(nbs_data) %in% c("NET_WIDTH.y")]
+names(nbs_data)[names(nbs_data)=="NET_WIDTH.x"] <- "NET_WIDTH"
+
+##load & format WBS data
+load(paste0(getwd(),"/data/Russian/Russian_haul_WithFishingPower.Rdata"))
+wbs_sub <- Russian_haul
+wbs_sub$DATE <- as.factor(gsub("/", "-", wbs_sub$DATE))
+#checks
+wbs_sub <- wbs_sub[which(wbs_sub$STRATUM != 0),]
+wbs_sub <- wbs_sub[!is.na(wbs_sub$STRATUM),]
+wbs_sub <- wbs_sub[which(!is.na(wbs_sub$WEIGHT)),]
+#combine hauls that are the same
+wbs_sub <- wbs_sub %>%
+  group_by(HAULJOIN, SPECIES_NAME) %>%
+  mutate(WEIGHT = sum(WEIGHT, na.rm = TRUE),
+         NUMBER_FISH = sum(NUMBER_FISH, na.rm=TRUE)) %>%
+  distinct(HAULJOIN,SPECIES_NAME,.keep_all=TRUE)
+
+towards_haul <- wbs_sub[,c('HAULJOIN',"REGION","VESSEL",'START_LATITUDE','START_LONGITUDE','DATE',"SURVEY_NAME","STRATUM",
+                           "AREA_SWEPT","DISTANCE_FISHED","DURATION","NET_WIDTH","GEAR","HEADROPE_LENGTH","YEAR","UniqueID","UniqueID_2")]
+haul_wbs <- distinct(towards_haul)
+catch_by_species <- wbs_sub[,c("HAULJOIN","REGION","VESSEL","SPECIES_CODE","WEIGHT","NUMBER_FISH",
+                                                 "FISHING_POWER","weight_FISHING_POWER","SURVEY_NAME","STRATUM","MIN_LENGTH","MAX_LENGTH")] #"YEAR","DATE",
+catch_by_species <- catch_by_species[which(catch_by_species$SPECIES_CODE == species_code),]
+catch_by_species <- as.data.frame(catch_by_species)
+head(catch_by_species)
+all_hauls <- unique(haul_wbs$HAULJOIN)
+missing_hauljoins <- all_hauls[which(unique(wbs_sub$HAULJOIN) %in% catch_by_species$HAULJOIN == FALSE)]
+test <- zero_fill(missing_hauljoins = missing_hauljoins, catch = catch_by_species, species_code = species_code)
+wbs_sub2 <- dplyr::inner_join(test,haul_wbs, by="HAULJOIN")
+testit::assert("Input missing_hauljoins nrow() does not match sumHaul() CPUE output: likely not filling in zero catch correctly", nrow(haul_wbs) == nrow(wbs_sub2))
+wbs_sub2 <- as.data.frame(wbs_sub2)
+#take out columns needed for VAST
+wbs_sub2 = data.frame( wbs_sub2, "UniqueID_new"=paste(wbs_sub2$START_LATITUDE,wbs_sub2$START_LONGITUDE,wbs_sub2$DATE,wbs_sub2$AREA_SWEPT,wbs_sub2$HAULJOIN,sep="_") )
+wbs_DF <- wbs_sub2[,c("WEIGHT","AREA_SWEPT","START_LATITUDE","START_LONGITUDE","DATE","HAULJOIN","DURATION",
+                        "NET_WIDTH","DISTANCE_FISHED","VESSEL","GEAR","HEADROPE_LENGTH","YEAR","REGION","SURVEY_NAME","UniqueID","UniqueID_2","STRATUM","SPECIES_CODE","UniqueID_new")]
+
+nrow(wbs_DF)
+wbs_DF <- wbs_DF[which(wbs_DF$SPECIES_CODE == species_code),]
+wbs_DF[which(wbs_DF$WEIGHT == 0),]
+wbs <- wbs_DF
+wbs$WEIGHT[is.na(wbs$WEIGHT)] <- 0
+nrow(wbs[which(wbs$WEIGHT == 0),])
+nrow(wbs[which(wbs$NUMBER_FISH == 0),])
+   
+wbs_data <- wbs
+#####################################################################################################################################
+
+#####################################################################################################################################
+
+#add species common name
+shelf_data$common_name <- species_name
+nbs_data$common_name <- species_name
+wbs_data$common_name <- species_name
+
+#add Survey name
+shelf_data$Survey <- "EBS"
+shelf_data$Center <- "AFSC"
+nbs_data$Survey <- "NBS"
+nbs_data$Center <- "AFSC"
+wbs_data$Survey <- "WBS"
+wbs_data$Center <- "TINRO"
+
+#make WBS vessels unique
+wbs_data$VESSEL <- wbs_data$VESSEL + 300
+
+#combine region & stratum to create unique stratum ID (Because russian & EBS data overlap)
+shelf_data = data.frame(shelf_data, "unique_stratum"=paste(shelf_data$Survey,shelf_data$STRATUM,shelf_data$Center,sep="_"))
+nbs_data = data.frame(nbs_data, "unique_stratum"=paste(nbs_data$Survey,nbs_data$STRATUM,nbs_data$Center, sep="_"))
+wbs_data = data.frame(wbs_data, "unique_stratum"=paste(wbs_data$Survey,wbs_data$STRATUM,wbs_data$Center, sep="_"))
+
+#convert to CPUE
+shelf_data <- shelf_data %>%
+  dplyr::mutate(EFFORT = DISTANCE_FISHED * (NET_WIDTH * 0.001) * 100) %>% #this is in kg/ha
+  dplyr::mutate(wCPUE = (WEIGHT/EFFORT)* 100) #* 100 makes it in kg/km2
+
+nbs_data <- nbs_data %>%
+  dplyr::mutate(EFFORT = DISTANCE_FISHED * (NET_WIDTH * 0.001) * 100) %>% #this is in kg/ha 
+  dplyr::mutate(wCPUE = (WEIGHT/EFFORT)* 100) #* 100 makes it in kg/km2
+
+wbs_data <- wbs_data %>%
+  dplyr::mutate(EFFORT = AREA_SWEPT * 100) %>% #DISTANCE_FISHED * (NET_WIDTH) * 100) %>% #this is in kg/ha
+  dplyr::mutate(wCPUE = (WEIGHT/EFFORT)* 100)#* 100 makes it in kg/km2
+
+##REMOVE ROWS WITH wCPUE as NA
+nrow(shelf_data[is.na(shelf_data$wCPUE),])
+nrow(nbs_data[is.na(nbs_data$wCPUE),])
+nrow(wbs_data[is.na(wbs_data$wCPUE),])
+
+#subset to only necessary rows (Catch (kg from data$WEIGHT), numbers, Year, Vessel, Distance fished, net width, Lat, Lon)
+shelf_data <- shelf_data[,c("WEIGHT","wCPUE","YEAR","VESSEL","DISTANCE_FISHED","NET_WIDTH","DURATION", "START_LATITUDE","START_LONGITUDE","common_name","unique_stratum","Survey","Center")]
+nbs_data <- nbs_data[,c("WEIGHT","wCPUE","YEAR","VESSEL","DISTANCE_FISHED","NET_WIDTH","DURATION" ,"START_LATITUDE","START_LONGITUDE","common_name","unique_stratum","Survey","Center")]
+wbs_data <- wbs_data[,c("WEIGHT","wCPUE","YEAR","VESSEL","DISTANCE_FISHED","NET_WIDTH","DURATION" ,"START_LATITUDE","START_LONGITUDE","common_name","unique_stratum","Survey","Center")]
+
+#combine all strata into one data frame
+all_strata <- rbind(shelf_data, nbs_data, wbs_data)
+#create Data_Geostat
+Data_Geostat <- NULL
+
+Data_Geostat = data.frame( "Catch_KG"=all_strata[,'wCPUE'], 
+                           "Year"=as.numeric(as.character(all_strata[,'YEAR'])), 
+                           "Vessel"=all_strata[,'VESSEL'], 
+                           "AreaSwept_km2"=1, 
+                           "Lat"=all_strata[,'START_LATITUDE'], 
+                           "Lon"=all_strata[,'START_LONGITUDE'], 
+                           "Pass"=0, 
+                           "Stratum"=all_strata[,'unique_stratum'],
+                           "Survey" = all_strata[,'Survey'],
+                           "Center" = all_strata[,'Center'])
+
+range(Data_Geostat$Catch_KG)
+saveRDS(Data_Geostat, file = paste0(working_directory,"/Data_Geostat_",species_name,".rds"))
+
+##OUTPUT: Data_Geostat that contains columns for Catch (kg from data$WEIGHT), Year, Vessel, AreaSwept_km, Pass, Lat, Lon
