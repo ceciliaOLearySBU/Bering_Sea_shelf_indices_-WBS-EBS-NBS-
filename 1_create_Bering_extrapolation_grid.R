@@ -2,7 +2,9 @@ library(FishStatsUtils)
 ####this code now runs with FishStatusUtils-2.
 
 working_directory <- getwd()
-##load file with lat/lon of extrapolation area for WBS to combine with EBS & NBS
+##load file with lat/lon of extrapolation area for WBS to combine with EBS & NBS (includes Lon,Lat, Area_km2, subRegion)
+## you can see an example of how to build this loaded file from a shapefile using my code found here: 
+## https://github.com/James-Thorson-NOAA/VAST/wiki/Creating-an-extrapolation-grid
 grid2 <- readRDS(file = paste0(working_directory,"/grid2_WBS.rds"))
 
 zone <- 31
