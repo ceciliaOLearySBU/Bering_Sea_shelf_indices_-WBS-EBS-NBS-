@@ -1,7 +1,7 @@
 library(devtools)
 library(TMB)  
-#devtools::install_local("C:/Users/cecilia.oleary/Downloads/FishStatsUtils-2.7.0/FishStatsUtils-2.7.0")
-#devtools::install_local("C:/Users/cecilia.oleary/Downloads/VAST-3.5.0/VAST-3.5.0", ref='--no-staged-install')
+#devtools::install_local("/FishStatsUtils-2.7.0/FishStatsUtils-2.7.0")
+#devtools::install_local("/VAST-3.5.0/VAST-3.5.0", ref='--no-staged-install')
 library(VAST)
 library(dplyr)
 gc()
@@ -55,7 +55,7 @@ settings = make_settings( Version = "VAST_v9_2_0",
                           max_cells = 5000, 
                           knot_method = "grid")
 
-source('C:/Users/cecilia.oleary/Desktop/Rprojects/VAST_Bering_Sea_Indices/fit_model.R')
+source(paste0(getwd(),'/fit_model.R'))
 fit = fit_model( "settings" = settings, 
                  "Lat_i" = Data_Geostat[,'Lat'], 
                  "Lon_i" = Data_Geostat[,'Lon'], 
