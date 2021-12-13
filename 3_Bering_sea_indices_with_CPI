@@ -65,23 +65,18 @@ fit = fit_model( "settings" = settings,
                  "a_i" = Data_Geostat[,'AreaSwept_km2'], 
                  "v_i" = Data_Geostat[,'Vessel']-1,
                  "Q_ik" = Q_ik,
-                 #"X_itp"=X_itp, 
-                 #"X_gtp"=X_gtp, 
-                 #"Xconfig_zcp"=Xconfig_zcp, 
                  "extrapolation_list" = Extrapolation_List,
-                 #"input_grid"=input_grid, 
-                 #create_strata_per_region = TRUE, 
                  "run_model" = FALSE,
                  "optimize_args" =list("lower"=-Inf,"upper"=Inf),
                  "newtonsteps" = 0,
                  working_dir = paste0(getwd(), "/",fish_name,"_CPE_results/"))
 
 
+#load & center cold pool index
 Covariate = c("None", "Bottom", "BotVar", "Cold_pool")[4]
 if( Covariate=="Cold_pool" ){
   CP = read.csv( paste0(getwd(),"/data/cpa_areas2018.csv") )
   CP = CP[ which(CP[,'YEAR'] %in% unique(Data_Geostat[,'Year'])), 'AREA_SUM_LTE2' ]
-  #f = log
   f = function(a) a  # Works better using natural NOT log link
   CP = ( f(CP) - mean(f(CP)) ) / sd(f(CP))
   X_xtp = rep(1,n_x) %o% CP %o% c(1)
@@ -105,9 +100,6 @@ fit = fit_model( "settings" = settings,
                  "X_gtp"=X_gtp, 
                  "Xconfig_zcp"=Xconfig_zcp, 
                  "extrapolation_list" = Extrapolation_List,
-                 #"input_grid"=input_grid, 
-                 #create_strata_per_region = TRUE, 
-                 #"run_model" = FALSE,
                  "optimize_args" =list("lower"=-Inf,"upper"=Inf),
                  "newtonsteps" = 0,
                  working_dir = paste0(getwd(), "/",fish_name,"_CPE_results/"))
