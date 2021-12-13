@@ -1,0 +1,139 @@
+library(devtools)
+library(TMB)  
+#devtools::install_local("C:/Users/cecilia.oleary/Downloads/FishStatsUtils-2.7.0/FishStatsUtils-2.7.0")
+#devtools::install_local("C:/Users/cecilia.oleary/Downloads/VAST-3.5.0/VAST-3.5.0", ref='--no-staged-install')
+library(VAST)
+library(dplyr)
+gc()
+
+#load Data_Geostat & Extrapolation list
+working_directory <- getwd()
+Species = c("Gadus chalcogrammus", "Gadus macrocephalus","Pleuronectes quadrituberculatus")[1] #c(pollock, Pcod,APlaice)
+fish_name = c("pollock", "cod","plaice")[1] #c(pollock, Pcod,APlaice)
+n_x= 500
+
+Data_Geostat <- readRDS(file = paste0(working_directory,"/Data_Geostat_",Species,".rds"))
+Extrapolation_List <-  readRDS(file = paste0(working_directory,"/Extrapolation_List.rds"))
+Extrapolation_List$projargs="+proj=longlat +ellps=WGS84" 
+Region="User"
+strata.limits <- data.frame('STRATA'="All_areas")
+
+FieldConfig = matrix( c("IID","IID","IID","IID","IID","IID"), ncol=2, nrow=3, dimnames=list(c("Omega","Epsilon","Beta"),c("Component_1","Component_2")) )
+RhoConfig  = c("Beta1" = 0, "Beta2" = 0, "Epsilon1" = 4, "Epsilon2" = 4)
+if( Species=="Gadus chalcogrammus" ) ObsModel = c(2,1) #ObsModel = c(2,0)
+if( Species=="Gadus macrocephalus" ) ObsModel = c(2,1)#c(2,3)
+if( Species=="Pleuronectes quadrituberculatus" ) ObsModel = c(2,1) #ObsModel = c(2,0)
+
+#create catchability matrix
+#fixlambda <- -1
+fixlambda <- 0
+##annual 
+if(fixlambda == -1){
+  message('turning on annual catchability')
+  ## Annual coefficient, create model matrix with sum to zero contrasts
+  ## to avoid confounding with betas
+  yearf <- factor(Data_Geostat$Year)
+  Q_ik <- model.matrix(~yearf, contrasts=list(yearf='contr.sum'))
+  ## Zero out non-WBS rows so they are unaffected by the lambdas
+  Q_ik[which(Data_Geostat$Center!='TINRO'),] <- 0
+} else {
+  ## Constant over time
+  Q_ik <- matrix(ifelse(Data_Geostat$Center =='TINRO', 1, 0), ncol=1)
+}
+
+settings = make_settings( Version = "VAST_v9_2_0",
+                          FieldConfig = FieldConfig,
+                          RhoConfig = RhoConfig,
+                          n_x= 500, 
+                          Region= Region, 
+                          purpose="index2", 
+                          strata.limits=data.frame(STRATA = c("All_areas","EBS","NBS","WBS")), 
+                          #zone = Extrapolation_List$zone, 
+                          bias.correct = TRUE,
+                          use_anisotropy = TRUE,
+                          fine_scale = TRUE,
+                          max_cells = 5000, 
+                          knot_method = "grid")
+
+source('C:/Users/cecilia.oleary/Desktop/Rprojects/VAST_Bering_Sea_Indices/fit_model.R')
+fit = fit_model( "settings" = settings, 
+                 "Lat_i" = Data_Geostat[,'Lat'], 
+                 "Lon_i" = Data_Geostat[,'Lon'], 
+                 "t_i" = Data_Geostat[,'Year'], 
+                 "c_i" = rep(0,nrow(Data_Geostat)), 
+                 "b_i" = Data_Geostat[,'Catch_KG'], 
+                 "a_i" = Data_Geostat[,'AreaSwept_km2'], 
+                 "v_i" = Data_Geostat[,'Vessel']-1,
+                 "Q_ik" = Q_ik,
+                 #"X_itp"=X_itp, 
+                 #"X_gtp"=X_gtp, 
+                 #"Xconfig_zcp"=Xconfig_zcp, 
+                 "extrapolation_list" = Extrapolation_List,
+                 #"input_grid"=input_grid, 
+                 #create_strata_per_region = TRUE, 
+                 "run_model" = FALSE,
+                 "optimize_args" =list("lower"=-Inf,"upper"=Inf),
+                 "newtonsteps" = 0,
+                 working_dir = paste0(getwd(), "/",fish_name,"_CPE_results/"))
+
+
+Covariate = c("None", "Bottom", "BotVar", "Cold_pool")[4]
+if( Covariate=="Cold_pool" ){
+  CP = read.csv( paste0(getwd(),"/data/cpa_areas2018.csv") )
+  CP = CP[ which(CP[,'YEAR'] %in% unique(Data_Geostat[,'Year'])), 'AREA_SUM_LTE2' ]
+  #f = log
+  f = function(a) a  # Works better using natural NOT log link
+  CP = ( f(CP) - mean(f(CP)) ) / sd(f(CP))
+  X_xtp = rep(1,n_x) %o% CP %o% c(1)
+  Xconfig_zcp = c(2,2) %o% 1 %o% 1
+  # fine-scale inputs
+  X_itp = rep(1,fit$spatial_list$n_i) %o% CP %o% c(1)
+  X_gtp = rep(1,fit$spatial_list$n_g) %o% CP %o% c(1)
+}
+gc()
+
+fit = fit_model( "settings" = settings, 
+                 "Lat_i" = Data_Geostat[,'Lat'], 
+                 "Lon_i" = Data_Geostat[,'Lon'], 
+                 "t_i" = Data_Geostat[,'Year'], 
+                 "c_i" = rep(0,nrow(Data_Geostat)), 
+                 "b_i" = Data_Geostat[,'Catch_KG'], 
+                 "a_i" = Data_Geostat[,'AreaSwept_km2'], 
+                 "v_i" = Data_Geostat[,'Vessel']-1,
+                 "Q_ik" = Q_ik,
+                 "X_itp"=X_itp, 
+                 "X_gtp"=X_gtp, 
+                 "Xconfig_zcp"=Xconfig_zcp, 
+                 "extrapolation_list" = Extrapolation_List,
+                 #"input_grid"=input_grid, 
+                 #create_strata_per_region = TRUE, 
+                 #"run_model" = FALSE,
+                 "optimize_args" =list("lower"=-Inf,"upper"=Inf),
+                 "newtonsteps" = 0,
+                 working_dir = paste0(getwd(), "/",fish_name,"_CPE_results/"))
+
+source('C:/Users/cecilia.oleary/Desktop/Rprojects/VAST_Bering_Sea_Indices/FishStatsUtils-master/R/make_map_info.R')
+MapDetails_List = make_map_info( "Region"= Region, "spatial_list"= Spatial_List, "Extrapolation_List"=Extrapolation_List )
+MapDetails_List$PlotDF$Lon <- ifelse(MapDetails_List$PlotDF$Lon > 0, MapDetails_List$PlotDF$Lon, MapDetails_List$PlotDF$Lon + 360)
+plot_maps(plot_set = 3, Sdreport = Save$Opt[["SD"]], Report = Save$Report, PlotDF = MapDetails_List$PlotDF) 
+
+source('C:/Users/cecilia.oleary/Downloads/VASTPlotUtils-master/VASTPlotUtils-master/R/plot_maps.r')
+par(mfrow=c(8,5))
+Dens_xt = plot_maps(plot_set = 3, 
+                    fit = fit,
+                    Report=fit$report, 
+                    Sdreport=Opt$SD, 
+                    TmbData = fit$tmb_list, 
+                    spatial_list = fit$spatial_list,
+                    Panel = "Year", 
+                    PlotName = NULL,
+                    category_names = "singlespecies", 
+                    covar_names = NULL, 
+                    legend = TRUE )
+
+# Plot results
+plot( fit )
+plot_results( settings=settings, fit=fit, working_dir =  paste0(getwd(), "/",fish_name,"_CPE_results/"))
+
+# save the VAST model
+saveRDS(fit,file = paste0(getwd(),"/",fish_name,"_CPE_results/",Species,"VASTfit_oceanography.RDS"))
