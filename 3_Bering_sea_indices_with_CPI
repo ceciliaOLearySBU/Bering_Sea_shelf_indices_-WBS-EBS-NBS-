@@ -112,28 +112,5 @@ fit = fit_model( "settings" = settings,
                  "newtonsteps" = 0,
                  working_dir = paste0(getwd(), "/",fish_name,"_CPE_results/"))
 
-source('C:/Users/cecilia.oleary/Desktop/Rprojects/VAST_Bering_Sea_Indices/FishStatsUtils-master/R/make_map_info.R')
-MapDetails_List = make_map_info( "Region"= Region, "spatial_list"= Spatial_List, "Extrapolation_List"=Extrapolation_List )
-MapDetails_List$PlotDF$Lon <- ifelse(MapDetails_List$PlotDF$Lon > 0, MapDetails_List$PlotDF$Lon, MapDetails_List$PlotDF$Lon + 360)
-plot_maps(plot_set = 3, Sdreport = Save$Opt[["SD"]], Report = Save$Report, PlotDF = MapDetails_List$PlotDF) 
-
-source('C:/Users/cecilia.oleary/Downloads/VASTPlotUtils-master/VASTPlotUtils-master/R/plot_maps.r')
-par(mfrow=c(8,5))
-Dens_xt = plot_maps(plot_set = 3, 
-                    fit = fit,
-                    Report=fit$report, 
-                    Sdreport=Opt$SD, 
-                    TmbData = fit$tmb_list, 
-                    spatial_list = fit$spatial_list,
-                    Panel = "Year", 
-                    PlotName = NULL,
-                    category_names = "singlespecies", 
-                    covar_names = NULL, 
-                    legend = TRUE )
-
-# Plot results
-plot( fit )
-plot_results( settings=settings, fit=fit, working_dir =  paste0(getwd(), "/",fish_name,"_CPE_results/"))
-
 # save the VAST model
 saveRDS(fit,file = paste0(getwd(),"/",fish_name,"_CPE_results/",Species,"VASTfit_oceanography.RDS"))
