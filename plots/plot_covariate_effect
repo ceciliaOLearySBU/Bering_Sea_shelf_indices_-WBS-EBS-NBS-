@@ -1,0 +1,64 @@
+library(VAST)
+library(ggplot2)
+library(viridis)
+library(sp)
+
+##load VAST model fits##
+## pollock
+`Gadus chalcogrammusVASTfit_oceanography` <- readRDS(paste0(getwd(),"/final_results_April2021/with_oceanography/pollock_CPE_results/Gadus chalcogrammusVASTfit_oceanography.RDS"))
+##cod
+`Gadus macrocephalusVASTfit_oceanography` <- readRDS(paste0(getwd(),"/final_results_April2021/with_oceanography/cod_CPE_results/Gadus macrocephalusVASTfit_oceanography.RDS"))
+##plaice
+`Pleuronectes quadrituberculatusVASTfit_oceanography` <- readRDS(paste0(getwd(),"/final_results_April2021/with_oceanography/plaice_CPE_results/Pleuronectes quadrituberculatusVASTfit_oceanography.RDS"))
+
+#rename models
+fit1 <- `Gadus chalcogrammusVASTfit_oceanography`
+fit2 <- `Gadus macrocephalusVASTfit_oceanography`
+fit3 <- `Pleuronectes quadrituberculatusVASTfit_oceanography`
+
+#load .cpp from VAST model fit
+if(!exists(paste0(getwd(),"/VAST_v9_2_0.dll"))) TMB::compile(paste0(getwd(),"/VAST_v9_2_0.cpp"))
+dyn.load(dynlib("VAST_v9_2_0"))
+
+#extract covariate data
+CPE_data <- as.data.frame(fit1$data_list$X_gtp[1,,])
+CPE_data$year <- 1982:2019
+colnames(CPE_data) <- c("CPE","year")
+
+#adjusted functions
+source(paste0(getwd(),'/R/plot_variable.R')) 
+source(paste0(getwd(),'/R/mytheme.r'))
+source(paste0(getwd(),'/R/borders.r'))
+source(paste0(getwd(),'/R/plot_maps_covariate.r'))
+
+#plot covariate effect using some FishStatsUtils packages and some adjusted from above
+covariate = plot_maps(plot_set = 14, 
+                      plot_value="estimate",
+                      fit1 = fit1,
+                      fit2 = fit2,
+                      fit3 = fit3,
+                      Obj1 = fit1$tmb_list$Obj, #essential
+                      Obj2 = fit2$tmb_list$Obj, #essential
+                      Obj3 = fit3$tmb_list$Obj, #essential
+                      Report1=fit1$Report,
+                      Report2=fit2$Report,
+                      Report3=fit3$Report,
+                      Sdreport1=fit1$parameter_estimates$SD,  #essential
+                      Sdreport2=fit2$parameter_estimates$SD,  #essential
+                      Sdreport3=fit3$parameter_estimates$SD,  #essential
+                      spatial_list1 = fit1$spatial_list,
+                      spatial_list2 = fit2$spatial_list,
+                      spatial_list3 = fit3$spatial_list,
+                      TmbData = fit$data_list, 
+                      Panel = "Year", 
+                      PlotName = 'covariate',
+                      category_names = "singlespecies",
+                      legend = FALSE,
+                      n_samples = 100,
+                      projargs = "+proj=longlat",
+                      Xlim = c(162,202), 
+                      Ylim = c(52,67.5),
+                      cex = 5,
+                      base_size = 38,
+                      years = "covariate",
+                      data = CPE_data)
