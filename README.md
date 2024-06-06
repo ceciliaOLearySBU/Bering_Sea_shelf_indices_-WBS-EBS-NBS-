@@ -10,4 +10,4 @@ The plots folder includes the code used to create the figures in the associated 
 The adjusted functions folder includes the R code that was adjusted for maps to cross the dateline. <br />
 The R folder contains additional code for plots that provide theme settings for R code. <br />
 
-The manuscript with model information and methods can be found here in ICES JMS[https://academic.oup.com/icesjms/article/79/4/1063/6555703].
+The manuscript with model information and methods can be found [here in ICES JMS](https://academic.oup.com/icesjms/article/79/4/1063/6555703).
