@@ -11,4 +11,5 @@ The adjusted functions folder includes the R code that was adjusted for maps to 
 The R folder contains additional code for plots that provide theme settings for R code. <br />
 
 The manuscript with model information and methods can be found [here in ICES JMS](https://academic.oup.com/icesjms/article/79/4/1063/6555703).<br />
+<br />
 Citation: O'Leary, Cecilia A., Lukas B. DeFilippo, James T. Thorson, Stan Kotwicki, Gerald R. Hoff, Vladimir V. Kulik, James N. Ianelli, and André E. Punt. "Understanding transboundary stocks’ availability by combining multiple fisheries-independent surveys and oceanographic conditions in spatiotemporal models." ICES Journal of Marine Science 79, no. 4 (2022): 1063-1074.
